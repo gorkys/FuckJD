@@ -1,0 +1,8 @@
+# Editor directories and files
+*.json
+venv
+.idea
+__pycache__
+doc
+config
+*/__pycache__
