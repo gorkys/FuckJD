@@ -5,12 +5,13 @@ import json
 from src import jd, sm, rgs
 from concurrent.futures import ThreadPoolExecutor
 
-Exe = ThreadPoolExecutor(max_workers=int(99))
+Exe = ThreadPoolExecutor(max_workers=int(9))
 
 accountList = []
 watchList = []
 
 lock = threading.Lock()
+Thread = threading.Thread
 
 
 def getWatchList():
@@ -245,15 +246,18 @@ def _watchInventory():
 
                         if isRisk("JX", proList, userInfo):
                             continue
-                        skuInfo = proList["data"]["skuInfo"]
-                        # jx接口没有筛选功能，根据顶置特性，来进行判断
-                        isBuy = skuInfo[0]["hasStock"] == 1 and skuInfo[0]["isShelves"] == 1 and skuInfo[0][
-                            "isYuShou"] == 0
+                        skuInfoData = proList["data"]["skuInfo"]
+
+                        # jx接口没有筛选功能，自行筛选出有效数据
+                        skuInfo = []
+                        for item in range(len(skuInfoData)):
+                            if skuInfoData[item]["hasStock"] == 1 and skuInfoData[item]["isShelves"] == 1:
+                                skuInfo.append(skuInfoData[item])
 
                     api_type = "JD" if apiType else "JX"
                     # 判断是否请求成功
                     if proList["iRet"] == "0":
-                        if len(skuInfo) != 0 and isBuy:
+                        if len(skuInfo) != 0:
                             isOrder(skuInfo, apiType)
                         else:
                             util.reLog("【{}】无有货的商品！来自账号：{}".format(api_type, nickname))
@@ -289,13 +293,13 @@ def isOrder(proList, apiType):
                 IS = data["commStatus"] == "1" and data["hasStock"] == 1 and data["commOrderStatus"] == "0"
                 proId = data["commId"]
                 proName = data["commTitle"]
-                # 获取详情页的库存状态
+                # 商品分类ID
                 cat = data["commCategory"].replace(";", ",")
             else:
                 IS = data["hasStock"] == 1 and data["isShelves"] == 1 and data["isYuShou"] == 0
                 proId = data["skuId"]
                 proName = data["goodsName"]
-
+                # 商品分类ID
                 cat = data["goodsCategory"].replace(";", ",")
 
             api_type = "JD" if apiType else "JX"
@@ -309,8 +313,8 @@ def isOrder(proList, apiType):
                         if proId == watchList[y]["skuId"] and watchList[y]["buyNum"] != 0:
                             # 这里发送信息之前是用了Exe.submit(sm.send_ding_msg)
                             item = f"{proName},有货了啦！库存状态：{detailsStock}\n商品链接：https://item.m.jd.com/product/{proId}.html"
-                            # Exe.submit(sm.send_ding_msg, item)
-                            sm.send_ding_msg(item)
+                            Thread(target=sm.send_ding_msg, args=item).start()
+                            # sm.send_ding_msg(item)
                             commitOrder(watchList[y])
                 else:
                     util.reLog(f"【{api_type}】【{proName}】不符合下单条件！详情库存：{detailsStock}")
@@ -329,8 +333,9 @@ def commitOrder(watchData):
     """
     for x in range(len(accountList)):
         # jd.setHeaders(accountList[x]["cookie"])
-        jd.orderAction(watchData, accountList[x])
+        # jd.orderAction(watchData, accountList[x])
         # 多线程
+        Thread(target=jd.orderAction, args=(watchData, accountList[x])).start()
         # Exe.submit(jd.orderAction, watchData, accountList[x])
 
 
