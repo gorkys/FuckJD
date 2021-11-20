@@ -71,15 +71,22 @@ class Stock:
         resJson = json.loads(res[15:-1])
         return resJson["stock"]["StockState"]
 
+    def getStock_h5draw(self, skuId, cookie):
+        url = f"https://wq.jd.com/itemv3/h5draw?sku={skuId}&isJson=1&source=h5v3&g_login_type=1&g_ty=ajax"
+        header = self.header
+        header["cookie"] = cookie
+        res = requests.get(url, headers=self.header).json()
+        return res["domain"]["data"]["skuInfo"]["stockState"]
+
 
 # 40 配货
 # 34 无货
 # 33 有货
-skuId = "100015763798"
+skuId = "100006843633"
 areaId = "18_1482_48936_53640"
 cat = "9987,653,655"
 vId = "1000003443"
-
+cookie = "pt_key=AAJhieSyADB2kEClnYoAybp7sxxPQteMcBQUcMqBz1qC5e5xJd0A6Gdj9d63vl7TtE-ZqfUUAmU;cid=9;"
 s = Stock()
 funcList = [
     methodcaller('getStock_getWareBusiness', skuId, areaId),
@@ -100,3 +107,4 @@ funcList = [
 # print(s.getStock_stock(skuId, areaId, cat, vId))
 # print(s.getStock_c3stock(skuId, areaId, cat, vId))
 # print(s.getStock_c03stock(skuId, areaId, cat, vId))
+# s.getStock_h5draw(skuId, cookie)

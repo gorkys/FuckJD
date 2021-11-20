@@ -1,11 +1,13 @@
+# coding:utf-8
 import threading
 from utils import util
 import time
 import json
+import traceback
 from src import jd, sm, rgs
-from concurrent.futures import ThreadPoolExecutor
+# from concurrent.futures import ThreadPoolExecutor
 
-Exe = ThreadPoolExecutor(max_workers=int(9))
+# Exe = ThreadPoolExecutor(max_workers=int(9))
 
 accountList = []
 watchList = []
@@ -74,7 +76,6 @@ def setIntervalAccount():
 
 
 def setIntervalWatch():
-    global watchList
     # with open("./productList.json", "r", encoding="utf-8") as products:
     #     watchList = json.load(products)
     while True:
@@ -236,7 +237,6 @@ def _watchInventory():
                         if isRisk("JD", proList, userInfo):
                             continue
                         skuInfo = proList["data"]
-                        isBuy = True
                     else:
                         res = jd.setRedis(areaId)
 
@@ -246,13 +246,13 @@ def _watchInventory():
 
                         if isRisk("JX", proList, userInfo):
                             continue
-                        skuInfoData = proList["data"]["skuInfo"]
+                        skuData = proList["data"]["skuInfo"]
 
                         # jx接口没有筛选功能，自行筛选出有效数据
                         skuInfo = []
-                        for item in range(len(skuInfoData)):
-                            if skuInfoData[item]["hasStock"] == 1 and skuInfoData[item]["isShelves"] == 1:
-                                skuInfo.append(skuInfoData[item])
+                        for item in range(len(skuData)):
+                            if skuData[item]["hasStock"] == 1 and skuData[item]["isShelves"] == 1:
+                                skuInfo.append(skuData[item])
 
                     api_type = "JD" if apiType else "JX"
                     # 判断是否请求成功
@@ -306,8 +306,8 @@ def isOrder(proList, apiType):
             # 满足上架、有货、普通商品条件
             if IS:
                 # 获取详情页的库存状态
-                detailsStock = rgs(proId, accountList[0]["areaId"], cat, data["venderId"])
-                if int(detailsStock) != 34:
+                detailsStock = rgs(proId, accountList, cat, data["venderId"])
+                if detailsStock != 34:
                     for y in range(len(watchList)):
                         # 符合监控列表数据的条件
                         if proId == watchList[y]["skuId"] and watchList[y]["buyNum"] != 0:
@@ -317,12 +317,12 @@ def isOrder(proList, apiType):
                             # sm.send_ding_msg(item)
                             commitOrder(watchList[y])
                 else:
-                    util.reLog(f"【{api_type}】【{proName}】不符合下单条件！详情库存：{detailsStock}")
+                    util.reLog(f"【{api_type}】【{proName}】不符合下单条件！详情库存状态：{detailsStock}")
             else:
-
-                util.reLog(f"【{api_type}】【{proName}】不符合下单条件！收藏夹库存：{IS}")
+                util.reLog(f"【{api_type}】【{proName}】不符合下单条件！收藏夹库存状态：{IS}")
         except Exception as e:
-            util.reLog(f"确认订单报错：{e}")
+            util.reLog(f"确认订单报错：{traceback.format_exc()}")
+
         time.sleep(1)
 
 
@@ -340,11 +340,16 @@ def commitOrder(watchData):
 
 
 if __name__ == "__main__":
-    Exe.submit(setIntervalAccount)
-    Exe.submit(setIntervalWatch)
+    Thread(target=setIntervalAccount).start()
+    Thread(target=setIntervalWatch).start()
     time.sleep(5)
-    Exe.submit(setIntervalCollect)
+    Thread(target=setIntervalCollect).start()
     time.sleep(5)
+    # Exe.submit(setIntervalAccount)
+    # Exe.submit(setIntervalWatch)
+    # time.sleep(5)
+    # Exe.submit(setIntervalCollect)
+    # time.sleep(5)
     watchInventory()
 
     # 测试下单

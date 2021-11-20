@@ -226,7 +226,6 @@ class Stock:
         header = self.header
         header["referer"] = "https://item-soa.jd.com/getWareBusiness"
         res = requests.get(url, headers=header).text
-
         resJson = json.loads(res[15:-1])
         return resJson["stockInfo"]["stockState"]
 
@@ -256,7 +255,7 @@ class Stock:
         url = f"https://wq.jd.com/commodity/skudescribe/get?command=3&source=wqm_cpsearch&priceinfo=1&buynums=1&skus={skuId}&area={areaId}&callback=stockCallbackA"
         res = requests.get(url, headers=self.header).text
         resJson = json.loads(res[15:-3])
-        return resJson["stockstate"]["data"][skuId]["a"]
+        return int(resJson["stockstate"]["data"][skuId]["a"])
 
     def getStock_stock(self, skuId, areaId, cat, vId):
         url = f"https://cd.jd.com/stock?callback=stockCallbackA&buyNum=1&ch=2&sceneval=2&skuId={skuId}&venderId={vId}&cat={cat}&area={areaId}"
@@ -284,6 +283,16 @@ class Stock:
         resJson = json.loads(res[15:-1])
         # print(f"接口：c03,内容：{resJson}")
         return resJson["stock"]["StockState"]
+
+    def getStock_h5draw(self, skuId, cookie):
+        url = f"https://wq.jd.com/itemv3/h5draw?sku={skuId}&isJson=1&source=h5v3&g_login_type=1&g_ty=ajax"
+        header = self.header
+        header["cookie"] = cookie
+        try:
+            res = requests.get(url, headers=self.header).json()
+            return res["domain"]["data"]["skuInfo"]["stockState"]
+        except Exception as e:
+            util.reLog(f"通过cookie获取详情库存报错：{e}")
 
 
 class SendMessage(object):
@@ -351,7 +360,7 @@ class SendMessage(object):
 stock = Stock()
 
 
-def randomGetStock(skuId, areaId, cat, vId):
+def randomGetStock(skuId, accont, cat, vId):
     """
     从库存接口合集中任意获取一个库存
     # 40 配货
@@ -363,6 +372,9 @@ def randomGetStock(skuId, areaId, cat, vId):
     :param vId:
     :return: 返回库存状态ID，如33
     """
+    index = random.randint(0, len(accont) - 1)
+    areaId = accont[index]["areaId"]
+    cookie = accont[index]["cookie"]
     funcList = [
         methodcaller('getStock_getWareBusiness', skuId, areaId),
         methodcaller('getStock_mview2', skuId, areaId),
@@ -378,7 +390,7 @@ def randomGetStock(skuId, areaId, cat, vId):
     try:
         state = f(stock)
     except Exception as e:
-        state = funcList[0](stock)
+        state = stock.getStock_h5draw(skuId, cookie)
         util.reLog(f"查询详情页库存报错：{e}，错误接口：{f},重新请求后状态：{state}")
     return state
 
