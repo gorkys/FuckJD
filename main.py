@@ -5,9 +5,9 @@ import time
 import json
 import traceback
 from src import jd, sm, rgs
-# from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
-# Exe = ThreadPoolExecutor(max_workers=int(9))
+Exe = ThreadPoolExecutor(max_workers=int(99))
 
 accountList = []
 watchList = []
@@ -20,45 +20,39 @@ def getWatchList():
     global watchList
     # with open("./productList.json", "r", encoding="utf-8") as products:
     #     watchList = json.load(products)
-    try:
-        res = util.getJDGoods()
-        if res["code"] == 200:
-            item = res["data"]["list"]
-            temp = []
-            # 提取有购买量的商品进行监控购买
-            for i in range(len(item)):
-                if item[i]["buyNum"]:
-                    temp.append(item[i])
-            watchList = temp
-            util.reLog("监控列表更新完成！")
-            return False
-        else:
-            return True
-    except Exception as e:
-        util.reLog("获取监控列表请求报错：{}".format(e))
+    res = util.getJDGoods()
+    if res["code"] == 200:
+        item = res["data"]["list"]
+        temp = []
+        # 提取有购买量的商品进行监控购买
+        for i in range(len(item)):
+            # 增加提示次数，避免虚假库存时一直提示并下单
+            item[i]["isTip"] = True
+            if item[i]["buyNum"]:
+                temp.append(item[i])
+        watchList = temp
+        util.reLog("监控列表更新完成！")
+        return False
+    else:
         return True
 
 
 def getAccounts():
     global accountList
-    try:
-        res = util.getJDAccount()
-        if res["code"] == 200:
-            item = res["data"]["list"]
-            temp = []
-            # 提取在线状态的账号
-            for i in range(len(item)):
-                if not item[i]["status"]:
-                    temp.append(item[i])
-            accountList = temp
-            if len(accountList) == 0:
-                sm.send_wx_msg(f"accountList={len(accountList)} 賬號有異常！")
-            util.reLog("账号列表更新完成！")
-            return False
-        else:
-            return True
-    except Exception as e:
-        util.reLog("获取账号列表请求报错：{}".format(e))
+    res = util.getJDAccount()
+    if res["code"] == 200:
+        item = res["data"]["list"]
+        temp = []
+        # 提取在线状态的账号
+        for i in range(len(item)):
+            if not item[i]["status"]:
+                temp.append(item[i])
+        accountList = temp
+        if len(accountList) == 0:
+            sm.send_wx_msg(f"accountList={len(accountList)} 賬號有異常！")
+        util.reLog("账号列表更新完成！")
+        return False
+    else:
         return True
 
 
@@ -67,11 +61,14 @@ def setIntervalAccount():
     # with open("Cookies.json", "r", encoding="utf-8") as cookies:
     #     accountList = json.load(cookies)
     while True:
-        lock.acquire()
-        ok = getAccounts()
-        lock.release()
-        if ok:
-            continue
+        try:
+            lock.acquire()
+            ok = getAccounts()
+            lock.release()
+            if ok:
+                continue
+        except Exception as e:
+            util.reLog(f"获取账号发生异常：{traceback.format_exc()}")
         time.sleep(60 * 5)
 
 
@@ -79,14 +76,20 @@ def setIntervalWatch():
     # with open("./productList.json", "r", encoding="utf-8") as products:
     #     watchList = json.load(products)
     while True:
-        if getWatchList():
-            continue
+        try:
+            if getWatchList():
+                continue
+        except Exception as e:
+            util.reLog(f"获取监控数据发生异常：{traceback.format_exc()}")
         time.sleep(60 * 10)
 
 
 def setIntervalCollect():
     while True:
-        diffCollect()
+        try:
+            diffCollect()
+        except Exception as e:
+            util.reLog(f"比对收藏数据发生异常：{traceback.format_exc()}")
         time.sleep(60 * 8)
 
 
@@ -208,71 +211,65 @@ def watchInventory():
     runCount = 0
     while True:
         # lock.acquire()
-        _watchInventory()
-        runCount += 1
-        if runCount % 100 == 0:
-            util.reLog(f"runCount = {runCount}")
+        try:
+            _watchInventory()
+            runCount += 1
+            if runCount % 100 == 0:
+                util.reLog(f"runCount = {runCount}")
+        except Exception as e:
+            util.reLog(f"比对收藏数据发生异常：{traceback.format_exc()}")
         # lock.release()
 
 
 def _watchInventory():
     # 轮番使用jd与jx两个接口
-    try:
-        for k in range(2):
-            for i in range(len(accountList)):
-                cookie = accountList[i]["cookie"]
-                userInfo = accountList[i]
-                # 设置cookie
-                nickname = accountList[i]["nickname"]
-                areaId = accountList[i]["areaId"]
-                jd.setHeaders(cookie)
-                # 用来打印错误源
-                proList = None
-                try:
-                    # 选择接口进行监控 1为jd 0为jx
-                    apiType = k
-                    if apiType:
-                        proList = jd.watchInventory(areaId)
+    for k in range(2):
+        for i in range(len(accountList)):
+            cookie = accountList[i]["cookie"]
+            userInfo = accountList[i]
+            # 设置cookie
+            nickname = accountList[i]["nickname"]
+            areaId = accountList[i]["areaId"]
+            jd.setHeaders(cookie)
+            try:
+                # 选择接口进行监控 1为jd 0为jx
+                apiType = k
+                if apiType:
+                    proList = jd.watchInventory(areaId)
 
-                        if isRisk("JD", proList, userInfo):
-                            continue
-                        skuInfo = proList["data"]
+                    if isRisk("JD", proList, userInfo):
+                        continue
+                    skuInfo = proList["data"]
+                else:
+                    res = jd.setRedis(areaId)
+
+                    if isRisk("JX", res, userInfo):
+                        continue
+                    proList = jd.watchInventoryJx()
+
+                    if isRisk("JX", proList, userInfo):
+                        continue
+                    skuData = proList["data"]["skuInfo"]
+
+                    # jx接口没有筛选功能，自行筛选出有效数据
+                    skuInfo = []
+                    for item in range(len(skuData)):
+                        if skuData[item]["hasStock"] == 1 and skuData[item]["isShelves"] == 1:
+                            skuInfo.append(skuData[item])
+
+                api_type = "JD" if apiType else "JX"
+                # 判断是否请求成功
+                if proList["iRet"] == "0":
+                    if len(skuInfo) != 0:
+                        isOrder(skuInfo, apiType)
                     else:
-                        res = jd.setRedis(areaId)
+                        util.reLog("【{}】无有货的商品！来自账号：{}".format(api_type, nickname))
+                else:
+                    util.reLog("【{}】接口返回异常：{}".format(nickname, proList["errMsg"]))
+            except Exception as e:
+                util.reLog(f"【{nickname}】监控异常报错：{e}")
 
-                        if isRisk("JX", res, userInfo):
-                            continue
-                        proList = jd.watchInventoryJx()
-
-                        if isRisk("JX", proList, userInfo):
-                            continue
-                        skuData = proList["data"]["skuInfo"]
-
-                        # jx接口没有筛选功能，自行筛选出有效数据
-                        skuInfo = []
-                        for item in range(len(skuData)):
-                            if skuData[item]["hasStock"] == 1 and skuData[item]["isShelves"] == 1:
-                                skuInfo.append(skuData[item])
-
-                    api_type = "JD" if apiType else "JX"
-                    # 判断是否请求成功
-                    if proList["iRet"] == "0":
-                        if len(skuInfo) != 0:
-                            isOrder(skuInfo, apiType)
-                        else:
-                            util.reLog("【{}】无有货的商品！来自账号：{}".format(api_type, nickname))
-                    else:
-                        util.reLog("【{}】接口返回异常：{}".format(nickname, proList["errMsg"]))
-                except Exception as e:
-                    print(proList)
-                    util.reLog(f"【{nickname}】监控异常报错：{e}")
-
-                time.sleep(2)
-            # else:
-            #     # 如果没有执行for的主程序，則會跑到這裏來
-            #     util.reLog(f"No Account, Please Check. AccountList={len(accountList)}")
-    except Exception as e:
-        print(e)
+            time.sleep(2)
 
 
 def isOrder(proList, apiType):
@@ -310,10 +307,11 @@ def isOrder(proList, apiType):
                 if detailsStock != 34:
                     for y in range(len(watchList)):
                         # 符合监控列表数据的条件
-                        if proId == watchList[y]["skuId"] and watchList[y]["buyNum"] != 0:
+                        if proId == watchList[y]["skuId"] and watchList[y]["buyNum"] != 0 and watchList[y]["isTip"]:
                             # 这里发送信息之前是用了Exe.submit(sm.send_ding_msg)
                             item = f"{proName},有货了啦！库存状态：{detailsStock}\n商品链接：https://item.m.jd.com/product/{proId}.html"
-                            Thread(target=sm.send_ding_msg, args=item).start()
+                            # Thread(target=sm.send_ding_msg, args=item).start()
+                            Exe.submit(sm.send_ding_msg, item)
                             # sm.send_ding_msg(item)
                             commitOrder(watchList[y])
                 else:
@@ -335,8 +333,8 @@ def commitOrder(watchData):
         # jd.setHeaders(accountList[x]["cookie"])
         # jd.orderAction(watchData, accountList[x])
         # 多线程
-        Thread(target=jd.orderAction, args=(watchData, accountList[x])).start()
-        # Exe.submit(jd.orderAction, watchData, accountList[x])
+        # Thread(target=jd.orderAction, args=(watchData, accountList[x])).start()
+        Exe.submit(jd.orderAction, watchData, accountList[x])
 
 
 if __name__ == "__main__":
@@ -350,8 +348,14 @@ if __name__ == "__main__":
     # time.sleep(5)
     # Exe.submit(setIntervalCollect)
     # time.sleep(5)
-    watchInventory()
-
+    while True:
+        try:
+            m = Thread(target=watchInventory)
+            m.start()
+            m.join()
+            util.reLog("重新启动线程4")
+        except Exception as e:
+            util.reLog(f"线程4发生异常：{traceback.format_exc()}")
     # 测试下单
     # jd.setHeaders("pt_key=AAJhWCPhADDehv0WYWD7Jb3ZaZS-87ptA_Xb2KHTeda3BxS-MWp8MKlLw-l8kYtowQWkfJDpBMs;")
     # jd.setRedis(accountList[5]["areaId"])
