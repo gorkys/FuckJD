@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 Exe = ThreadPoolExecutor(max_workers=int(99))
 
+# 线程时间变量(看门狗监控值)
 thread_Time = 0
 
 accountList = []
@@ -306,13 +307,14 @@ def watchInventory():
 def _watchInventory():
     # 轮番使用jd与jx两个接口
     apiType = ["JX", "JD"]
+    accTemp = copy.deepcopy(accountList)
     for k in range(len(apiType)):
-        for i in range(len(accountList)):
-            cookie = accountList[i]["cookie"]
-            userInfo = accountList[i]
+        for i in range(len(accTemp)):
+            cookie = accTemp[i]["cookie"]
+            userInfo = accTemp[i]
             # 设置cookie
-            nickname = accountList[i]["nickname"]
-            areaId = accountList[i]["areaId"]
+            nickname = accTemp[i]["nickname"]
+            areaId = accTemp[i]["areaId"]
             jd.setHeaders(cookie)
             try:
                 # 选择接口进行监控
@@ -463,15 +465,18 @@ def watchDog():
     """
     while True:
         now_time = int(time.time())
-        if now_time - thread_Time > 60 * 5:
+        if now_time - thread_Time > 60 * 4:
             threadList = threading.enumerate()
             for i in range(len(threadList)):
                 if threadList[i].name == "watchInventory":
                     terminate_thread(threadList[i])
+                    time.sleep(5)
                     Thread(target=watchInventory, name="watchInventory").start()
-                    util.reLog("线程重启成功...")
-        else:
-            util.reLog(f"看门狗报告:时差{now_time - thread_Time}s")
+                    sm.send_wx_msg("线程假死，重启成功...")
+                    time.sleep(10)
+                    break
+        # else:
+        #     util.reLog(f"看门狗报告:时差{now_time - thread_Time}s")
         time.sleep(10)
 
 

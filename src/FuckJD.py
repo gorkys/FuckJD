@@ -122,13 +122,12 @@ class FuckJD(object):
                 resJson = json.loads(jsonStr)
 
                 if resJson["errId"] == "0":
-                    msg = "【{}】下单成功！商品名称：{}订单编号：{},订单金额：{}".format(username, goodName, resJson["dealId"],
-                                                                   int(resJson["totalPrice"]) / 100)
+                    msg = f"【{username}】下单成功！商品名称：{goodName}订单编号：{resJson['dealId']},订单金额：{int(resJson['totalPrice']) / 100},耗时：{res.elapsed.total_seconds()}"
                     util.reLog(msg)
                     sm.send_sql_msg(username, msg)
                     sm.send_wx_msg(msg)
                 else:
-                    content = "【{}】下单接口异常：{}".format(username, resJson["errMsg"])
+                    content = f"【{username}】下单接口异常：{resJson['errMsg']},耗时：{res.elapsed.total_seconds()}"
                     util.reLog(content)
                     sm.send_sql_log(content)
             else:
@@ -154,7 +153,7 @@ class FuckJD(object):
         }
         self.header["referer"] = "https://wqs.jd.com/my/fav/goods_fav.shtml"
         params = parse.urlencode(data)
-        res = requests.get(url, params, headers=self.header)
+        res = requests.get(url, params, headers=self.header, timeout=5)
         if res.status_code == 200:
             resJson = json.loads(res.text[14:-13])
             return resJson
@@ -182,7 +181,7 @@ class FuckJD(object):
         }
         self.header["Referer"] = "https://st.jingxi.com/my/fav.shtml"
         params = parse.urlencode(data)
-        res = requests.get(url, params, headers=self.header)
+        res = requests.get(url, params, headers=self.header, timeout=5)
         if res.status_code == 200:
             resJson = res.text
             return json.loads(resJson[14:-13])
